@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">AI Timeline</string>
+    <string name="accessibility_service_label">AI Timeline screen observer</string>
+    <string name="accessibility_service_description">사용자가 켠 동안 화면의 앱 이름, 창 텍스트, 클릭 흐름을 개인 타임라인으로 기록합니다.</string>
+</resources>

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ivLyrics Mobile</string>
+    <string name="notification_listener_label">ivLyrics Mobile 내부 음악 감지</string>
+</resources>

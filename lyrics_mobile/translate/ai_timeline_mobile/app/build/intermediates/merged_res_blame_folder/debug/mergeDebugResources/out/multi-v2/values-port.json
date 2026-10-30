@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.codex.aitimeline.app-mergeDebugResources-28:/values-port/values-port.xml",
+            "map": [
+                {
+                    "source": "/Users/kcw0956/.gradle/caches/9.3.1/transforms/39ce378c3e7e0af2acf89c64e81ccbba/transformed/appcompat-1.5.1/res/values-port/values-port.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "55",
+                        "endOffsets": "106"
+                    }
+                }
+            ]
+        }
+    ]
+}

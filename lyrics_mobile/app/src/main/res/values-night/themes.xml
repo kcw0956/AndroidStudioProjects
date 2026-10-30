@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.Lyrics_mobile" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#246BEB</item>
+        <item name="colorPrimaryVariant">#1855BF</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#246BEB</item>
+        <item name="android:windowBackground">#F5F6F8</item>
+        <item name="android:statusBarColor">#F5F6F8</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+    </style>
+</resources>

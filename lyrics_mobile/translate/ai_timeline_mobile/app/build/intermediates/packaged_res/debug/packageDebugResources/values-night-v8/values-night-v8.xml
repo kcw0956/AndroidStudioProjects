@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <style name="Theme.AiTimeline" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorPrimaryVariant">@color/brand_primary_dark</item>
+        <item name="colorOnPrimary">@color/text_on_brand</item>
+        <item name="android:windowBackground">@color/surface_dark</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:statusBarColor" ns1:targetApi="l">#090B0D</item>
+    </style>
+</resources>

@@ -1,0 +1,7 @@
+com.codex.aitimeline.app-pngs-0 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/generated/res/pngs/debug
+com.codex.aitimeline.app-updated_navigation_xml-1 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/generated/updated_navigation_xml/debug
+com.codex.aitimeline.app-packageDebugResources-2 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.codex.aitimeline.app-packageDebugResources-3 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.codex.aitimeline.app-debug-4 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.codex.aitimeline.app-debug-5 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/src/debug/res
+com.codex.aitimeline.app-main-6 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/src/main/res

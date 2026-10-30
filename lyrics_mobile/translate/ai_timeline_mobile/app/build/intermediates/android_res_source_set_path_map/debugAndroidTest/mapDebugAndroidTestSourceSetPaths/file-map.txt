@@ -1,0 +1,4 @@
+com.codex.aitimeline.test.app-updated_navigation_xml-0 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/generated/updated_navigation_xml/debugAndroidTest
+com.codex.aitimeline.test.app-packageDebugAndroidTestResources-1 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/incremental/debugAndroidTest/packageDebugAndroidTestResources/merged.dir
+com.codex.aitimeline.test.app-packageDebugAndroidTestResources-2 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/incremental/debugAndroidTest/packageDebugAndroidTestResources/stripped.dir
+com.codex.aitimeline.test.app-debugAndroidTest-3 /Users/kcw0956/AndroidStudioProjects/lyrics_mobile/translate/ai_timeline_mobile/app/build/intermediates/merged_res/debugAndroidTest/mergeDebugAndroidTestResources
