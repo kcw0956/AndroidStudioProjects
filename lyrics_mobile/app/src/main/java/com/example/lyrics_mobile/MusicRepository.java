@@ -16,6 +16,11 @@ public final class MusicRepository {
     private final ClientFactory aiClients;
     private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
     public volatile boolean storageFailed;
+    private LyricsRecovery.OfficialProvider recoveryProvider = LyricsRecovery.UNAVAILABLE;
+    public MusicRepository(MusicStore store, AppSettings settings, LyricsRecovery.OfficialProvider provider) {
+        this(store, settings);
+        this.recoveryProvider = provider == null ? LyricsRecovery.UNAVAILABLE : provider;
+    }
     public MusicRepository(MusicStore store, AppSettings settings) { this(store, settings, LyricsAiClient::new); }
     MusicRepository(MusicStore store, AppSettings settings, ClientFactory aiClients) {
         this.store = store; this.settings = settings; this.aiClients = aiClients;
@@ -25,13 +30,16 @@ public final class MusicRepository {
     }
     public static class SearchCache { public List<SongInfo> songs; }
     public DataResult<List<SongInfo>> search(String query, OperationScope scope) {
+        searchNotice = "";
         String key = "regional-v2:" + query.trim().toLowerCase(java.util.Locale.ROOT);
         synchronized (lock("search:" + key)) {
             SearchCache cached = store.read("search", key, SearchCache.class, MusicStore.WEEK);
             if (cached != null && cached.songs != null) return DataResult.ok(cached.songs);
             long token = store.generation();
-            DataResult<List<SongInfo>> result = new SongSearchClient(scope).find(query);
-            if (result.isSuccess() && !scope.isCancelled() && !result.value.isEmpty()) {
+            SongSearchClient searcher = new SongSearchClient(scope);
+            DataResult<List<SongInfo>> result = searcher.find(query);
+            searchNotice = searcher.getNotice();
+            if (result.isSuccess() && searchNotice.isEmpty() && !scope.isCancelled() && !result.value.isEmpty()) {
                 SearchCache save = new SearchCache(); save.songs = result.value;
                 storageFailed = !store.write("search", key, save, token);
             }
@@ -67,24 +75,71 @@ public final class MusicRepository {
         SearchCache cached = store.read("search", key, SearchCache.class, MusicStore.WEEK);
         if (cached != null && cached.songs != null && !cached.songs.isEmpty()) return DataResult.ok(cached.songs);
         long token = store.generation();
-        DataResult<List<SongInfo>> result = new SongSearchClient(scope).findCandidates(title, artist);
+        SongSearchClient searcher = new SongSearchClient(scope);
+        DataResult<List<SongInfo>> result = searcher.findCandidates(title, artist);
+        searchNotice = searcher.getNotice();
         if (!result.isSuccess()) return result;
         List<SongInfo> originals = new ArrayList<>();
         for (SongInfo song : result.value) if (!TrackRules.alternateVersion(song.getTitle())) originals.add(song);
-        if (!scope.isCancelled() && !originals.isEmpty()) {
+        if (searchNotice.isEmpty() && !scope.isCancelled() && !originals.isEmpty()) {
             SearchCache cache = new SearchCache(); cache.songs = originals; storageFailed = !store.write("search", key, cache, token);
         }
         return DataResult.ok(originals);
     }
     public DataResult<LrcLibClient.Lyrics> lyrics(SongInfo song, OperationScope scope) {
         synchronized (lock("lyrics:" + song.identity())) {
-            LrcLibClient.Lyrics cached = store.read("lyrics", "native-v2:" + song.identity(), LrcLibClient.Lyrics.class, MusicStore.MONTH);
+            LrcLibClient.Lyrics cached = store.read("lyrics", "native-v2:" + song.identity(), LrcLibClient.Lyrics.class, 0);
             if (cached != null && cached.plain != null && !cached.plain.trim().isEmpty()) return DataResult.ok(cached);
             long token = store.generation();
             DataResult<LrcLibClient.Lyrics> result = new LrcLibClient(scope).find(song);
             if (result.isSuccess() && !scope.isCancelled()) storageFailed = !store.write("lyrics", "native-v2:" + song.identity(), result.value, token);
             return result;
         }
+    }
+    /** Explicit consent required. Separate cache prevents AI text masquerading as source lyrics. */
+    public DataResult<LrcLibClient.Lyrics> requestAiLyrics(SongInfo song, OperationScope scope, String provider, String model) {
+        String key = "direct-v1:" + song.identity() + ":" + provider + ":" + model;
+        synchronized (lock(key)) {
+            if (scope.isCancelled()) return DataResult.fail(AiFailure.exception(new java.io.InterruptedIOException()));
+            LrcLibClient.Lyrics cached = store.read("ai_lyrics", key, LrcLibClient.Lyrics.class, 0);
+            if (cached != null && cached.aiSupplied && cached.plain != null && !cached.plain.trim().isEmpty()) return DataResult.ok(cached);
+            List<String> keys = AppSettings.parseApiKeys(settings.getApiKeys(provider));
+            if (keys.isEmpty()) return DataResult.fail(AiFailure.missingKey(provider));
+            long token = store.generation();
+            LyricsAiClient.AiTextResult response = aiClients.create(scope, provider).requestLyrics(song, keys.get(0), model);
+            if (scope.isCancelled()) return DataResult.fail(AiFailure.exception(new java.io.InterruptedIOException()));
+            if (!response.isSuccess()) return DataResult.fail(DirectAiLyrics.failure(response.getFailure()));
+            DataResult<LrcLibClient.Lyrics> result = DirectAiLyrics.parse(response.getText(), song, provider);
+            if (result.isSuccess()) storageFailed = !store.write("ai_lyrics", key, result.value, token);
+            return result;
+        }
+    }
+    /** Disk only: no client creation, network request, or billing. */
+    public String cachedAi(SongInfo song, String lyrics, String lang, String provider, String model, String kind) {
+        String key = MusicStore.variant(song, lyrics, lang, "gemini".equals(provider) ? model : provider + ":" + model, kind);
+        String cached = store.read("ai", key, String.class, MusicStore.MONTH);
+        return cached == null || cached.trim().isEmpty() ? null : cached;
+    }
+    /** Call only after lyrics() returned NOT_FOUND, never after a service/network failure.
+     * Each call repeats bounded cleanup/secondary checks before optional AI; no failure is cached. */
+    public DataResult<LrcLibClient.Lyrics> recoverLyrics(SongInfo song, OperationScope scope, boolean allowAi) {
+        long token = store.generation();
+        DataResult<LrcLibClient.Lyrics> result = new LyricsRecovery((title, artist) -> LyricsRecovery.catalog(title, artist, scope),
+                candidate -> new LrcLibClient(scope).find(candidate), raw -> {
+                    String provider = settings.getAiProvider();
+                    String keys = settings.getApiKeys(provider);
+                    List<String> parsedKeys = AppSettings.parseApiKeys(keys);
+                    if (parsedKeys.isEmpty())
+                        return new LyricsAiClient.AiTextResult(AiFailure.missingKey(provider));
+                    // Recovery must not rotate keys and repeat a failed paid request.
+                    return aiClients.create(scope, provider).cleanMetadata(raw.getTitle(), raw.getArtist(), parsedKeys.get(0), settings.getModel(provider));
+                }, recoveryProvider).recover(song, scope, allowAi);
+        if (result.isSuccess() && !scope.isCancelled() && !Thread.currentThread().isInterrupted())
+            storageFailed = !store.write("lyrics", "native-v2:" + song.identity(), result.value, token);
+        return result;
+    }
+    public DataResult<LrcLibClient.Lyrics> recoverLyrics(SongInfo song, OperationScope scope) {
+        return recoverLyrics(song, scope, false);
     }
     public LyricsAiClient.AiTextResult ai(SongInfo song, String lyrics, String lang, String provider, String model, String keys, String kind, OperationScope scope) {
         String backupKeys = settings.getApiKeys("gemini"), backupModel = settings.getModel("gemini");

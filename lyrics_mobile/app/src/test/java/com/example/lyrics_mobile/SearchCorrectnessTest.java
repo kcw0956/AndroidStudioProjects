@@ -22,6 +22,12 @@ public class SearchCorrectnessTest {
         assertEquals("Song Artist", TrackRules.searchQueries("Song / Artist [Lyrics]", "").get(0));
         assertTrue(TrackRules.searchQueries(null, null).isEmpty());
     }
+    @Test public void versionDetectionDoesNotMistakeOrdinaryLiveTitles() {
+        assertFalse(TrackRules.alternateVersion("I Want to Live"));
+        assertFalse(TrackRules.alternateVersion("Song (I Live Here)"));
+        assertTrue(TrackRules.alternateVersion("Song (Live at Budokan)"));
+        assertEquals("Vaundy しわあわせ", TrackRules.searchQueries("Vaundy「しわあわせ」 / THE FIRST TAKE", "THE FIRST TAKE").get(0));
+    }
     @Test public void rankArtistBeforeWrongArtistExactTitleAndDeduplicate() {
         SongInfo correct = song("灯火", "Vaundy", "one", 179000);
         SongInfo duplicate = song("灯火", "Vaundy", "two", 179500);
@@ -68,5 +74,12 @@ public class SearchCorrectnessTest {
     private static SongInfo song(String title, String artist, String id, long duration) { return new SongInfo(title, artist, "", id, "", duration); }
     private static JsonObject record(String title, String artist, double duration) {
         JsonObject record = new JsonObject(); record.addProperty("trackName", title); record.addProperty("artistName", artist); record.addProperty("duration", duration); return record;
+    }
+
+    @Test public void publicAliasMustMatchExactlyBeforeNativeExpansion() {
+        String json = "{\"works\":[{\"title\":\"灯火\",\"aliases\":[{\"name\":\"TOMOSHIBI\"}]},{\"title\":\"永遠の灯\",\"aliases\":[{\"name\":\"eien no tomoshibi\"}]}]}";
+        assertEquals(java.util.Arrays.asList("灯火"), NativeTitleAliases.parse(json, "tomoshibi"));
+        assertEquals("tomoshibi", NativeTitleAliases.token("Vaundy tomoshibi"));
+        assertTrue(NativeTitleAliases.token("灯火").isEmpty());
     }
 }

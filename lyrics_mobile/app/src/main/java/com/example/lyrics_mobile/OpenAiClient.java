@@ -16,7 +16,7 @@ import okhttp3.Response;
 final class OpenAiClient {
     private static final String BASE = "https://api.openai.com/v1";
     private final OperationScope scope;
-    private final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
+    private static final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS).writeTimeout(20, TimeUnit.SECONDS).callTimeout(120, TimeUnit.SECONDS).build();
     OpenAiClient(OperationScope scope) { this.scope = scope; }
     private static LyricsAiClient.AiTextResult fail(AiFailure failure) {

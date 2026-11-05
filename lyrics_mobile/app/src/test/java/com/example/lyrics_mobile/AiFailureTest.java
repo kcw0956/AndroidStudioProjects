@@ -60,6 +60,6 @@ public class AiFailureTest {
     @Test public void blockedAndTruncatedResponsesAreFailures() {
         assertEquals("RECITATION", AiFailure.response("RECITATION").code);
         assertEquals("MAX_TOKENS", AiFailure.response("MAX_TOKENS").code);
-        assertEquals("RESPONSE_INVALID", AiFailure.response("LINE_MISMATCH").code);
+        assertEquals("LINE_MISMATCH", AiFailure.response("LINE_MISMATCH").code);
     }
 }

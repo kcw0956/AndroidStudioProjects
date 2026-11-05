@@ -8,6 +8,7 @@ public class SongInfo {
     private String album = "";
     private String catalogId = "";
     private String appleUrl = "";
+    private String artworkUrl = "";
     private long durationMs;
     public SongInfo(String title, String artist) {
         this.title = title == null ? "" : title.trim();
@@ -25,6 +26,11 @@ public class SongInfo {
     public String getAlbum() { return album == null ? "" : album; }
     public String getCatalogId() { return catalogId == null ? "" : catalogId; }
     public String getAppleUrl() { return appleUrl == null ? "" : appleUrl; }
+    public String getArtworkUrl() { return artworkUrl == null ? "" : artworkUrl; }
+    public SongInfo withArtworkUrl(String url) {
+        artworkUrl = url == null ? "" : url.trim();
+        return this;
+    }
     public long getDurationMs() { return durationMs; }
     public boolean isValid() { return !getTitle().trim().isEmpty(); }
     public String identity() {

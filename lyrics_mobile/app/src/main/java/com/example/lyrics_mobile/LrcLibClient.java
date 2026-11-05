@@ -10,11 +10,13 @@ import okhttp3.Request;
 import okhttp3.Response;
 
 public class LrcLibClient {
-    public static class Lyrics { public String plain = ""; public String synced = ""; public String notice = ""; }
+    public static class Lyrics { public String plain = ""; public String synced = ""; public String notice = ""; public String source = "LRCLIB"; public boolean aiSupplied; }
     private final OperationScope scope;
-    private final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).callTimeout(10, TimeUnit.SECONDS).build();
+    private static final OkHttpClient DEFAULT_CLIENT = new OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).callTimeout(10, TimeUnit.SECONDS).build();
+    private final OkHttpClient client;
     public LrcLibClient() { this(new OperationScope()); }
-    public LrcLibClient(OperationScope scope) { this.scope = scope; }
+    public LrcLibClient(OperationScope scope) { this(scope, DEFAULT_CLIENT); }
+    LrcLibClient(OperationScope scope, OkHttpClient client) { this.scope = scope; this.client = client; }
     public DataResult<Lyrics> find(SongInfo song) {
         scope.progress("곡 정보와 일치하는 가사를 찾고 있어요");
         HttpUrl.Builder url = HttpUrl.get("https://lrclib.net/api/get").newBuilder()
@@ -79,12 +81,24 @@ public class LrcLibClient {
         return lyrics;
     }
     private DataResult<JsonElement> request(HttpUrl url) {
+        long started = System.nanoTime();
         try (Response response = scope.execute(client.newCall(new Request.Builder().url(url).header("User-Agent", "LyricsMobile/2.0").build()))) {
+            scope.record("LRCLIB", url.encodedPath().endsWith("search") ? "search" : "get", "HTTP_" + response.code(), (System.nanoTime() - started) / 1000000);
             if (response.code() == 404) return DataResult.fail(DataResult.missing("이 곡에 등록된 가사가 없어요."));
-            if (!response.isSuccessful()) return DataResult.fail(DataResult.service(response.code(), "가사 서비스"));
+            if (!response.isSuccessful()) {
+                AiFailure failure = DataResult.service(response.code(), "LRCLIB 가사 서버");
+                String retry = response.header("Retry-After");
+                if (retry != null && retry.matches("[0-9]{1,6}")) failure = new AiFailure(failure.code, failure.title,
+                        failure.message + "\n\n서버가 안내한 최소 대기 시간: " + Integer.parseInt(retry) + "초. 이후에도 복구가 보장되지는 않아요.", failure.action);
+                return DataResult.fail(failure);
+            }
             if (response.body() == null) return DataResult.fail(AiFailure.response("EMPTY"));
             return DataResult.ok(JsonParser.parseString(response.body().string()));
-        } catch (Exception e) { return DataResult.fail(AiFailure.exception(e)); }
+        } catch (Exception e) {
+            AiFailure failure = AiFailure.exception(e);
+            scope.record("LRCLIB", "request", failure.code, (System.nanoTime() - started) / 1000000);
+            return DataResult.fail(failure);
+        }
     }
     private static String text(JsonObject root, String key) {
         return root.has(key) && root.get(key).isJsonPrimitive() ? root.get(key).getAsString() : "";

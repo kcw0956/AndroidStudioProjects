@@ -1,11 +1,32 @@
 <resources>
-    <style name="Theme.Lyrics_mobile" parent="Theme.MaterialComponents.Light.NoActionBar">
-        <item name="colorPrimary">#246BEB</item>
-        <item name="colorPrimaryVariant">#1855BF</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorSecondary">#246BEB</item>
-        <item name="android:windowBackground">#F5F6F8</item>
-        <item name="android:statusBarColor">#F5F6F8</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
+    <style name="Theme.Lyrics_mobile" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="colorPrimary">#DFFF62</item>
+        <item name="colorPrimaryVariant">#DFFF62</item>
+        <item name="colorOnPrimary">#10110F</item>
+        <item name="colorSecondary">#DFFF62</item>
+        <item name="colorOnSecondary">#10110F</item>
+        <item name="colorSurface">#1C1E19</item>
+        <item name="colorOnSurface">#EEEEE7</item>
+        <item name="android:colorBackground">#10110F</item>
+        <item name="android:windowBackground">#10110F</item>
+        <item name="android:textColorPrimary">#EEEEE7</item>
+        <item name="android:textColorSecondary">#B0B5A7</item>
+        <item name="android:statusBarColor">#10110F</item>
+        <item name="android:navigationBarColor">#10110F</item>
+    </style>
+    <style name="Theme.Lyrics_mobile.Orange" parent="Theme.Lyrics_mobile">
+        <item name="colorPrimary">#D9FF74</item>
+        <item name="colorPrimaryVariant">#D9FF74</item>
+        <item name="colorSecondary">#D9FF74</item>
+        <item name="colorOnPrimary">#12301F</item>
+        <item name="colorOnSecondary">#12301F</item>
+        <item name="colorSurface">#205337</item>
+        <item name="colorOnSurface">#FFF8DF</item>
+        <item name="android:colorBackground">#153E29</item>
+        <item name="android:windowBackground">#FF791B</item>
+        <item name="android:textColorPrimary">#FFF8DF</item>
+        <item name="android:textColorSecondary">#D1DFBF</item>
+        <item name="android:statusBarColor">#FF791B</item>
+        <item name="android:navigationBarColor">#FF791B</item>
     </style>
 </resources>

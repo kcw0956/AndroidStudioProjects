@@ -161,7 +161,7 @@ public final class MusicStore {
         }
         Collections.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
         long now = System.currentTimeMillis();
-        for (File file : files) if (total > MAX_CACHE || now - file.lastModified() > MONTH) {
+        for (File file : files) if (total > MAX_CACHE || (!"lyrics".equals(file.getParentFile().getName()) && !"ai_lyrics".equals(file.getParentFile().getName()) && now - file.lastModified() > MONTH)) {
             long size = file.length(); new AtomicFile(file).delete(); total -= size;
         }
     }

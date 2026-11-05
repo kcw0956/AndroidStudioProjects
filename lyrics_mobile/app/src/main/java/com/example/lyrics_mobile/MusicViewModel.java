@@ -37,6 +37,9 @@ public final class MusicViewModel extends AndroidViewModel {
     public final Map<String, String> outputErrors = new HashMap<>();
     private final java.util.LinkedHashSet<String> pendingOutputs = new java.util.LinkedHashSet<>();
     public String aiStatus = "";
+    public String lyricsStatus = "";
+    public boolean aiRecoveryAttempted;
+    public boolean lyricsMissing;
     private String failedOutput = "translation";
 
     public String settingsStatus = "", storageNotice = "";
@@ -120,6 +123,7 @@ public final class MusicViewModel extends AndroidViewModel {
                 for (SongInfo song : found.value) if (!originalsOnly || !TrackRules.alternateVersion(song.getTitle())) results.add(song);
                 searchMessage = results.isEmpty() ? "찾지 못했어요. 제목이나 가수를 바꿔 검색해 주세요."
                         : originalsOnly ? "원곡 후보예요. 제목과 가수를 확인하고 선택해 주세요." : results.size() + "곡을 찾았어요";
+                if (!repository.searchNotice.isEmpty()) searchMessage += "\n" + repository.searchNotice;
                 storageWarning();
             });
         });
@@ -139,27 +143,52 @@ public final class MusicViewModel extends AndroidViewModel {
                 searching = false;
                 if (!found.isSuccess()) { searchMessage = found.failure.message; error(found.failure, "current"); }
                 else { results = found.value; searchMessage = results.isEmpty() ? "확인할 수 있는 원곡을 찾지 못했어요. 직접 검색해 주세요." : "현재곡의 원곡 후보예요. 제목과 가수를 확인해 주세요."; }
+                if (!repository.searchNotice.isEmpty()) searchMessage += "\n" + repository.searchNotice;
                 storageWarning();
             });
         });
     }
     public void open(SongInfo song, String from) {
         selected = song; source = from; lyrics = null; outputs.clear(); outputSources.clear(); outputErrors.clear(); pendingOutputs.clear(); failure = null;
-        detailTab = settings.isShowOriginalEnabled() ? "original" : settings.isShowTranslationEnabled() ? "translation" : "pronunciation";
-        loadingAi = false; loadingLyrics = true;
+        detailTab = new ReaderPreferences(getApplication()).combined() ? "combined"
+                : settings.isShowOriginalEnabled() ? "original" : settings.isShowTranslationEnabled() ? "translation" : "pronunciation";
+        loadingAi = false; loadingLyrics = true; aiRecoveryAttempted = false; lyricsMissing = false; lyricsStatus = "가사 불러오는 중";
         OperationScope scope = start("detail");
+        scope.onProgress(message -> done(scope, () -> lyricsStatus = message));
         start("ai").cancel();
         notifyUi();
+        String provider = settings.getAiProvider(), model = settings.getModel(provider), language = settings.resolvedLanguage();
         workers.execute(() -> {
             long token = store.generation();
             if (!scope.isCancelled() && !store.visit(song, from, token)) storageNotice = "기록을 저장하지 못했어요. 저장 공간을 확인해 주세요.";
-            DataResult<LrcLibClient.Lyrics> fetched = repository.lyrics(song, scope);
+            DataResult<LrcLibClient.Lyrics> initial = repository.lyrics(song, scope);
+            final DataResult<LrcLibClient.Lyrics> fetched = !initial.isSuccess() && "NOT_FOUND".equals(initial.failure.code)
+                    ? repository.recoverLyrics(song, scope, false) : initial;
+            if (!scope.isCancelled() && !scope.diagnostics.isEmpty()) store.write("diagnostics", "last-lyrics", scope.diagnostics, token);
+            Map<String, String> prepared = new HashMap<>();
+            if (fetched.isSuccess() && !scope.isCancelled()) {
+                for (String kind : new String[]{"translation", "pronunciation"}) {
+                    String cached = repository.cachedAi(song, fetched.value.plain, language, provider, model, kind);
+                    if (cached != null && !cached.trim().isEmpty()) prepared.put(kind, cached);
+                }
+            }
             done(scope, () -> {
                 loadingLyrics = false;
-                if (!fetched.isSuccess()) { error(fetched.failure, "lyrics"); outputs.put("original", fetched.failure.message); }
-                else { lyrics = fetched.value; outputs.put("original", lyrics.plain); }
+                lyricsMissing = !fetched.isSuccess() && "NOT_FOUND".equals(fetched.failure.code);
+                if (!fetched.isSuccess()) { lyricsStatus = "불러오지 못했어요"; error(fetched.failure, "lyrics"); outputs.put("original", fetched.failure.message); }
+                else {
+                    lyrics = fetched.value; outputs.put("original", lyrics.plain);
+                    if (provider.equals(settings.getAiProvider()) && model.equals(settings.getModel(provider)) && language.equals(settings.resolvedLanguage())) {
+                        outputs.putAll(prepared);
+                        for (String kind : prepared.keySet()) outputSources.put(kind, AppSettings.providerLabel(provider) + " · 저장된 결과");
+                    }
+                }
                 storageWarning();
-                if (lyrics != null) { if (!"original".equals(detailTab)) generateSelected(); else drainOutputs(); }
+                if (lyrics != null) {
+                    ReaderPreferences reader = new ReaderPreferences(getApplication());
+                    if (reader.preGenerate()) requestOutputs(reader.translation(), reader.pronunciation());
+                    else drainOutputs();
+                }
             });
         });
     }
@@ -170,7 +199,7 @@ public final class MusicViewModel extends AndroidViewModel {
     }
     public void selectTab(String tab) {
         detailTab = tab; notifyUi();
-        if (!"original".equals(tab) && lyrics != null && !outputs.containsKey(tab)) generateSelected();
+        if (("translation".equals(tab) || "pronunciation".equals(tab)) && !outputs.containsKey(tab)) generateSelected();
     }
     public void generateSelected() {
         if ("translation".equals(detailTab) || "pronunciation".equals(detailTab)) {
@@ -182,6 +211,65 @@ public final class MusicViewModel extends AndroidViewModel {
         if (translation) pendingOutputs.add("translation");
         if (pronunciation) pendingOutputs.add("pronunciation");
         drainOutputs();
+    }
+    /** Called only by the positive action of the per-song consent dialog. */
+    public void recoverLyricsWithConsent() {
+        if (selected == null || loadingLyrics || lyrics != null || !lyricsMissing) return;
+        SongInfo song = selected;
+        aiRecoveryAttempted = true; loadingLyrics = true; failure = null;
+        pendingOutputs.clear(); lyricsStatus = "동의한 AI 곡 정보 탐색을 준비하고 있어요";
+        OperationScope scope = start("detail");
+        scope.onProgress(message -> done(scope, () -> lyricsStatus = message));
+        notifyUi();
+        workers.execute(() -> {
+            long token = store.generation(), started = System.nanoTime();
+            DataResult<LrcLibClient.Lyrics> result = repository.recoverLyrics(song, scope, true);
+            scope.record("lyrics-recovery", "", result.isSuccess() ? "SUCCESS" : result.failure.code, (System.nanoTime() - started) / 1000000);
+            if (!scope.isCancelled()) store.write("diagnostics", "last-ai", scope.diagnostics, token);
+            done(scope, () -> {
+                loadingLyrics = false;
+                if (result.isSuccess()) { lyrics = result.value; outputs.put("original", lyrics.plain); }
+                else { outputs.put("original", result.failure.message); error(result.failure, "lyrics"); }
+            });
+        });
+    }
+    public void cancelLyrics() {
+        OperationScope scope = operations.remove("detail"); if (scope != null) scope.cancel();
+        loadingLyrics = false; pendingOutputs.clear(); lyricsStatus = "가사 탐색을 취소했어요"; notifyUi();
+    }
+    public void requestAiLyricsWithConsent() {
+        if (selected == null || loadingLyrics || lyrics != null) return;
+        SongInfo song = selected;
+        String provider = settings.getAiProvider(), selectedModel = settings.getModel(provider);
+        aiRecoveryAttempted = true; loadingLyrics = true; failure = null;
+        pendingOutputs.clear(); lyricsStatus = "동의한 AI에 가사를 직접 요청하고 있어요";
+        OperationScope scope = start("detail");
+        notifyUi();
+        workers.execute(() -> {
+            long token = store.generation(), started = System.nanoTime();
+            DataResult<LrcLibClient.Lyrics> result = repository.requestAiLyrics(song, scope, provider, selectedModel);
+            scope.record(provider, selectedModel, result.isSuccess() ? "AI_LYRICS_SUCCESS" : result.failure.code, (System.nanoTime() - started) / 1000000);
+            if (!scope.isCancelled()) store.write("diagnostics", "last-ai", scope.diagnostics, token);
+            done(scope, () -> {
+                loadingLyrics = false;
+                if (result.isSuccess()) { lyrics = result.value; outputs.put("original", lyrics.plain); lyricsStatus = "AI 응답 · 미검증"; }
+                else { lyricsStatus = "AI가 가사를 제공하지 못했어요"; outputs.put("original", result.failure.message); error(result.failure, "lyrics"); }
+                storageWarning();
+            });
+        });
+    }
+    public void importLyrics(String text) {
+        if (selected == null || text == null || text.trim().isEmpty()) return;
+        OperationScope detail = operations.remove("detail"); if (detail != null) detail.cancel();
+        OperationScope ai = operations.remove("ai"); if (ai != null) ai.cancel();
+        pendingOutputs.clear(); outputs.clear(); outputSources.clear(); outputErrors.clear();
+        loadingLyrics = loadingAi = false; failure = null;
+        lyrics = new LrcLibClient.Lyrics(); lyrics.plain = text.trim(); lyrics.source = "사용자 입력";
+        lyrics.notice = "직접 입력한 원문이에요. 곡과 내용을 확인해 주세요.";
+        outputs.put("original", lyrics.plain);
+        SongInfo song = selected; LrcLibClient.Lyrics imported = lyrics; long token = store.generation();
+        workers.execute(() -> store.write("lyrics", "native-v2:" + song.identity(), imported, token));
+        notifyUi();
     }
     public void cancelAi() {
         OperationScope scope = operations.remove("ai"); if (scope != null) scope.cancel();
@@ -226,9 +314,11 @@ public final class MusicViewModel extends AndroidViewModel {
     }
     public String diagnosticSummary() {
         String[] lines = store.read("diagnostics", "last-ai", String[].class, 0);
-        return lines == null || lines.length == 0 ? "최근 AI 요청 진단 기록이 없어요. 캐시를 사용한 요청은 서버를 호출하지 않아요."
+        String[] lyricsLines = store.read("diagnostics", "last-lyrics", String[].class, 0);
+        String lyricsReport = lyricsLines == null ? "" : "\n\n최근 가사 서버 요청\n" + LyricLines.join(lyricsLines);
+        return (lines == null || lines.length == 0 ? "최근 AI 요청 진단 기록이 없어요. 캐시를 사용한 요청은 서버를 호출하지 않아요."
                 : "제공자 | 모델 | 결과 코드 | 소요 시간\n" + LyricLines.join(lines)
-                  + "\nAPI 키·가사·요청 본문은 기록하지 않아요.";
+                  + "\nAPI 키·가사·요청 본문은 기록하지 않아요.") + lyricsReport;
     }
     public void retry() {
         if ("ai".equals(failureOperation)) { retryOutput(failedOutput); }

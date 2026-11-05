@@ -22,7 +22,10 @@ public final class TrackRules {
         return tidy(out.toString().replaceAll("(?i)\\s+(?:official(?: music)? (?:video|audio)|lyrics video)\\s*$", ""));
     }
     public static boolean alternateVersion(String text) {
-        return tidy(text).toLowerCase(Locale.ROOT).matches("(?s).*(\\blive\\b|\\bcover\\b|\\bremix\\b|\\bacoustic\\b|\\btribute\\b|\\bkaraoke\\b|라이브|커버|리믹스|노래방).*" );
+        String value = tidy(text);
+        Matcher brackets = BRACKETS.matcher(value);
+        while (brackets.find()) if (versionLabel(brackets.group(1).trim())) return true;
+        return value.matches("(?i).+(?:\\s[-|/／]\\s*(?:live|cover|remix|acoustic|the first take).*|\\s+(?:live (?:at|from|in) .+|라이브|커버|리믹스|노래방))$");
     }
     public static String originalQuery(String text) {
         String input = cleanTitle(text);
@@ -30,16 +33,21 @@ public final class TrackRules {
         StringBuffer out = new StringBuffer();
         while (m.find()) {
             String label = m.group(1).trim();
-            boolean version = label.matches("(?i)(?:live(?:\\s+(?:at|from|in|ver(?:sion)?).*)?|(?:.*\\s+)?(?:cover|remix|acoustic|karaoke)(?:\\s+version)?|라이브.*|커버|리믹스)");
+            boolean version = versionLabel(label);
             m.appendReplacement(out, Matcher.quoteReplacement(version ? " " : m.group()));
         }
         m.appendTail(out);
         String result = out.toString().replaceAll("(?i)\\s+(?:[-|／/]\\s*)?(?:live\\s+(?:at|from|in)\\s+.+|official live(?: video)?|ライブ映像|라이브 영상)\\s*$", "");
         result = result.replaceAll("(?i)\\s+[-|]\\s*(?:live|cover|remix|acoustic|라이브|커버)\\s*$", "");
+        result = result.replaceAll("(?i)\\s*[/／|]\\s*(?:the first take|official music video|official audio)\\s*$", "")
+                .replaceAll("(?i)([」』\"])\\s*(?:live|ライブ)(?:\\s+.*)?$", "$1");
         return tidy(result);
     }
     public static String cleanArtist(String artist) {
         return tidy(tidy(artist).replaceAll("(?i)\\s*(?:[-|]\\s*(?:topic|official(?: channel)?)|\\s+official(?: youtube)? channel)\\s*$", ""));
+    }
+    private static boolean versionLabel(String label) {
+        return label.matches("(?i)(?:live(?:\\s+(?:at|from|in|ver(?:sion)?).*)?|(?:.*\\s+)?(?:cover|remix|acoustic|karaoke)(?:\\s+version)?|라이브.*|커버|리믹스)");
     }
     public static String originalQuery(String title, String artist) {
         String t = originalQuery(title), a = cleanArtist(artist);
@@ -53,6 +61,9 @@ public final class TrackRules {
         String unquoted = cleaned.replaceAll("[「」『』“”\"]", " ").replaceAll("\\s+[-|/／]\\s+", " ");
         queries.add(originalQuery(tidy(unquoted), a));
         queries.add(originalQuery(cleaned, a));
+        if (a.matches("(?i)(the first take|.*\\bchannel\\b.*|.*公式チャンネル.*)")) {
+            queries.clear(); queries.add(tidy(unquoted)); queries.add(cleaned);
+        }
         queries.remove("");
         return new ArrayList<>(queries);
     }

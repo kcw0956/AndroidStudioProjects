@@ -14,7 +14,7 @@ import okhttp3.Response;
 
 public class SongSearchClient {
     private final OperationScope scope;
-    private final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS).build();
+    private static final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(4, TimeUnit.SECONDS).callTimeout(6, TimeUnit.SECONDS).build();
     private String notice = "";
     public SongSearchClient() { this(new OperationScope()); }
     public SongSearchClient(OperationScope scope) { this.scope = scope; }
@@ -27,6 +27,7 @@ public class SongSearchClient {
         List<SongInfo> found = new ArrayList<>();
         AiFailure failure = null;
         int successes = 0, failures = 0;
+        List<String> nativeTitles = new ArrayList<>();
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(24);
         // All storefronts are consulted, even when an earlier storefront has unrelated hits.
         for (int q = 0; q < Math.min(2, queries.size()); q++) {
@@ -42,11 +43,32 @@ public class SongSearchClient {
             if (!found.isEmpty()) break;
         }
         if (scope.isCancelled()) return DataResult.fail(AiFailure.exception(new java.io.InterruptedIOException()));
+        String aliasToken = NativeTitleAliases.token(TrackRules.originalQuery(title));
+        if (!aliasToken.isEmpty() && deadline - System.nanoTime() > TimeUnit.SECONDS.toNanos(5)) {
+            scope.progress("곡명의 다른 표기와 원제를 확인하고 있어요");
+            try {
+                nativeTitles = NativeTitleAliases.find(aliasToken, scope);
+                for (String nativeTitle : nativeTitles) {
+                    long left = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+                    if (left <= 0 || scope.isCancelled()) break;
+                    String expanded = TrackRules.originalQuery(title).replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(aliasToken) + "\\b", java.util.regex.Matcher.quoteReplacement(nativeTitle));
+                    DataResult<List<SongInfo>> alternate = findInStore(TrackRules.originalQuery(expanded, artist), "JP", Math.min(6000, left));
+                    if (alternate.isSuccess()) { found.addAll(0, alternate.value); successes++; }
+                    else { failures++; failure = alternate.failure; }
+                }
+            } catch (Exception e) { notice = "원제 별칭 조회에 연결하지 못해 로마자 검색 후보가 빠질 수 있어요."; }
+        }
+        if (scope.isCancelled()) return DataResult.fail(AiFailure.exception(new java.io.InterruptedIOException()));
         if (failures > 0) notice = "일부 국가의 검색에 연결하지 못해 결과가 빠질 수 있어요. 잠시 후 다시 검색해 주세요.";
         if ((successes == 0 || found.isEmpty()) && failures > 0) return DataResult.fail(failure == null
                 ? AiFailure.exception(new java.net.SocketTimeoutException()) : failure);
         scope.progress("검색 결과의 곡명과 가수를 비교하고 있어요");
-        return DataResult.ok(mergeAndRank(found, title, artist));
+        List<SongInfo> ranked = mergeAndRank(found, title, artist);
+        java.util.Set<String> nativeNames = new java.util.HashSet<>();
+        for (String name : nativeTitles) nativeNames.add(TrackRules.normalized(name));
+        Collections.sort(ranked, (a,b) -> Integer.compare(score(b,title,artist) + (nativeNames.contains(TrackRules.normalized(b.getTitle())) ? 100 : 0),
+                score(a,title,artist) + (nativeNames.contains(TrackRules.normalized(a.getTitle())) ? 100 : 0)));
+        return DataResult.ok(ranked);
     }
     static List<SongInfo> mergeAndRank(List<SongInfo> input, String title, String artist) {
         List<SongInfo> result = new ArrayList<>();
@@ -93,6 +115,7 @@ public class SongSearchClient {
                     JsonObject item = array.get(i).getAsJsonObject();
                     SongInfo song = new SongInfo(text(item, "trackName"), text(item, "artistName"), text(item, "collectionName"),
                             text(item, "trackId"), text(item, "trackViewUrl"), item.has("trackTimeMillis") && !item.get("trackTimeMillis").isJsonNull() ? item.get("trackTimeMillis").getAsLong() : 0);
+                    song.withArtworkUrl(text(item, "artworkUrl100"));
                     if (song.isValid() && !song.getArtist().isEmpty()) songs.add(song);
                 }
                 return DataResult.ok(songs);

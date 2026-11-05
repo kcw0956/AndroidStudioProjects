@@ -1,5 +1,7 @@
 # 검색·원문 가사 조사 (2026-10-30)
 
+> 아래 본문은 최초 조사 시점 기록이다. 당시 '예정/상위 작업 필요' 사항은 후속 통합에서 반영했다. 현재 상태는 아래 후속 통합 및 `IMPROVEMENT_REPORT.md`를 우선한다.
+
 개인 키 없이 공개 iTunes Search API 및 LRCLIB 요청으로 확인했다. 아래 숫자는 이번 조회 표본이며 카탈로그 전체의 존재 여부를 뜻하지 않는다. 가사 본문은 기록하지 않는다.
 
 ## 재현한 원인
@@ -61,3 +63,11 @@ LRCLIB:
 - 전체 Gradle은 병렬 충돌을 피하기 위해 실행하지 않았다. 앱 통합 빌드/상위 캐시와 알림 전달은 부모 작업 검증 범위.
 
 공식 문서: [Apple Search API](https://performance-partners.apple.com/search-api), [LRCLIB API](https://lrclib.net/docs.txt).
+
+## 후속 통합 완료
+
+- Repository의 findCandidates 연결, 가수 보존, 검색/원문 캐시 버전 분리, 부분 검색 실패와 원문 확인 안내 UI 연결 완료.
+- MusicBrainz work 검색의 정확한 로마자 별칭에서 원제 후보를 최대 2개 얻어 JP 카탈로그를 다시 조회한다. 작품의 가수/작곡가와 검색할 녹음이 같다고 추정하지 않는다. 예컨대 TOMOSHIBI 별칭을 가진 灯火 작품의 작곡가가 Vaundy가 아니어도 '灯火'라는 검색어 후보로만 사용한다. 실제 결과의 가수·제목은 iTunes 응답에서 가져온다.
+- 원래 최대 6회 국가 조회에 별칭 1회/JP 확장 최대 2회가 추가될 수 있다. 전체 약 24초 예산 안에서만 진행한다. 검색 캐시 적용, 부분 실패 결과는 캐시하지 않음. 배포용 전역 서비스별 호출량 제어는 남은 과제다.
+- 실제 SongSearchClient로 `tomoshibi` 조회: 성공, 후보 132개 중 灯火 / Vaundy / 1706831934 포함, 약 5.97초. 유튜브 `Vaundy「しわあわせ」(Live at Budokan) [Official Video]`, 가수 `Vaundy - Topic`: 성공, しわあわせ / Vaundy / 1706829387 포함, 약 1.95초. 각각 한 번의 표본이며 저관련 후보도 포함된다.
+- SearchCorrectnessTest 12개, 전체 단위 49개, API 36 계측 13개 통과. 호출·계정 조건에 따른 모든 곡의 검색 성공을 보장하지 않는다.
